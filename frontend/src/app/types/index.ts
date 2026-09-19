@@ -94,13 +94,66 @@ export interface ScheduleEntry {
 export interface Conflict {
   id: number;
   semester: number;
-  conflict_type: 'teacher' | 'classroom' | 'class';
+  conflict_type: 'teacher' | 'classroom' | 'class' | 'locked';
   day_of_week: number;
   period: number;
   involved_entries: number[];
   message: string;
   resolved: boolean;
   created_at?: string;
+}
+
+export type UnscheduledReason =
+  | 'teacher_unavailable'
+  | 'classroom_capacity'
+  | 'classroom_type'
+  | 'classroom_occupied'
+  | 'teacher_occupied'
+  | 'class_occupied'
+  | 'no_free_slot'
+  | 'locked_conflict';
+
+export interface BlockedSlot {
+  day: number;
+  period: number;
+  reason: UnscheduledReason;
+}
+
+export interface UnscheduledCourse {
+  id: number;
+  semester: number;
+  class_id: number;
+  course: number;
+  teacher: number;
+  weekly_hours: number;
+  scheduled_hours: number;
+  unscheduled_hours: number;
+  reason: UnscheduledReason;
+  reason_display?: string;
+  detail: string;
+  blocked_slots: BlockedSlot[];
+  class_name?: string;
+  course_name?: string;
+  teacher_name?: string;
+  created_at?: string;
+}
+
+export interface AutoScheduleStats {
+  requested_hours: number;
+  scheduled_count: number;
+  locked_count: number;
+  newly_scheduled_count: number;
+  unscheduled_course_count: number;
+  unscheduled_hours: number;
+}
+
+export interface AutoScheduleResult {
+  schedule: ScheduleEntry[];
+  conflicts: Conflict[];
+  unscheduled_courses: UnscheduledCourse[];
+  scheduling_messages: unknown[];
+  stats: AutoScheduleStats;
+  total_entries: number;
 }
 
 export interface SwapRequest {

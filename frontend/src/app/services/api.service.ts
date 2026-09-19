@@ -4,7 +4,8 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import type {
   Classroom, Teacher, Class, Course, Semester,
-  ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+  ClassCourse, ScheduleEntry, Conflict, UnscheduledCourse,
+  AutoScheduleResult, SwapRequest, Substitute
 } from '../types';
 
 @Injectable({ providedIn: 'root' })
@@ -137,11 +138,30 @@ export class ApiService {
     return this.http.patch<ScheduleEntry>(`${this.baseUrl}/schedules/${id}/`, data);
   }
 
-  autoSchedule(semesterId: number, respectLocked = true): Observable<any> {
-    return this.http.post(`${this.baseUrl}/schedules/auto_schedule/`, {
+  autoSchedule(semesterId: number, respectLocked = true): Observable<AutoScheduleResult> {
+    return this.http.post<AutoScheduleResult>(`${this.baseUrl}/schedules/auto_schedule/`, {
       semester_id: semesterId,
       respect_locked: respectLocked
     });
+  }
+
+  getConflicts(semesterId?: number): Observable<Conflict[]> {
+    let params = new HttpParams();
+    if (semesterId) {
+      params = params.set('semester_id', semesterId.toString());
+    }
+    return this.http.get<Conflict[]>(`${this.baseUrl}/conflicts/`, { params });
+  }
+
+  getUnscheduledCourses(semesterId?: number, classId?: number): Observable<UnscheduledCourse[]> {
+    let params = new HttpParams();
+    if (semesterId) {
+      params = params.set('semester_id', semesterId.toString());
+    }
+    if (classId) {
+      params = params.set('class_id', classId.toString());
+    }
+    return this.http.get<UnscheduledCourse[]>(`${this.baseUrl}/unscheduled/`, { params });
   }
 
   swapEntries(entry1Id: number, entry2Id: number, reason?: string): Observable<any> {
@@ -160,10 +180,6 @@ export class ApiService {
       end_date: endDate,
       reason
     });
-  }
-
-  getConflicts(): Observable<Conflict[]> {
-    return this.http.get<Conflict[]>(`${this.baseUrl}/conflicts/`);
   }
 
   getSwapRequests(): Observable<SwapRequest[]> {

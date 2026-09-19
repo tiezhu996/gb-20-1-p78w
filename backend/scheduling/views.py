@@ -6,16 +6,18 @@ from rest_framework.permissions import AllowAny
 from django.db import transaction
 from core.models import Semester, Classroom, Teacher, Class
 from .models import (
-    ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+    ClassCourse, ScheduleEntry, Conflict, UnscheduledCourse,
+    SwapRequest, Substitute
 )
 from .serializers import (
     ClassCourseSerializer, ScheduleEntrySerializer,
     ScheduleEntryDetailSerializer, ConflictSerializer,
+    UnscheduledCourseSerializer,
     SwapRequestSerializer, SubstituteSerializer,
     AutoScheduleRequestSerializer, ConflictCheckSerializer,
     SwapScheduleRequestSerializer, SubstituteRequestSerializer
 )
-from .csp_solver import CSPScheduler, ConflictDetector, SchedulingTask, TimeSlot
+from .csp_solver import CSPScheduler, ConflictDetector, SchedulingTask
 from .pdf_export import (
     generate_class_timetable_pdf,
     generate_teacher_timetable_pdf,
@@ -132,18 +134,31 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             } for t in Teacher.objects.filter(is_active=True)
         }
 
+        # 锁定课次在重排时必须原样保留；忽略锁定时它们会随非锁定条目一起删除
         locked_entries = []
         if respect_locked:
             locked = ScheduleEntry.objects.filter(
                 semester=semester, is_locked=True
             ).values(
-                'id', 'class_id', 'teacher_id', 'classroom_id',
+                'id', 'class_id_id', 'teacher_id', 'classroom_id', 'course_id',
                 'day_of_week', 'period', 'is_locked'
             )
-            locked_entries = list(locked)
+            locked_entries = [
+                {
+                    'id': item['id'],
+                    'class_id': item['class_id_id'],
+                    'teacher_id': item['teacher_id'],
+                    'classroom_id': item['classroom_id'],
+                    'course_id': item['course_id'],
+                    'day_of_week': item['day_of_week'],
+                    'period': item['period'],
+                    'is_locked': True,
+                }
+                for item in locked
+            ]
 
         scheduler = CSPScheduler(semester)
-        assignments, scheduling_conflicts = scheduler.schedule(
+        assignments, unscheduled = scheduler.schedule(
             tasks, classrooms_data, teachers_data, locked_entries
         )
 
@@ -173,7 +188,10 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
 
             all_entries = ScheduleEntry.objects.filter(
                 semester=semester
-            ).values('id', 'teacher_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
+            ).values(
+                'id', 'teacher_id', 'classroom_id', 'class_id',
+                'day_of_week', 'period', 'is_locked'
+            )
 
             detector = ConflictDetector()
             conflicts = detector.detect_conflicts(list(all_entries))
@@ -191,24 +209,63 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
                 ))
             Conflict.objects.bulk_create(bulk_conflicts)
 
+            # 重新检测前先清掉旧的冲突标记（锁定课次之间的冲突也要可见）
+            ScheduleEntry.objects.filter(semester=semester).update(
+                is_conflict=False, conflict_type=''
+            )
             for c in conflicts:
                 for eid in c['involved_entries']:
-                    try:
-                        entry = ScheduleEntry.objects.get(id=eid)
-                        entry.is_conflict = True
-                        entry.conflict_type = c['conflict_type']
-                        entry.save()
-                    except ScheduleEntry.DoesNotExist:
-                        pass
+                    ScheduleEntry.objects.filter(id=eid).update(
+                        is_conflict=True, conflict_type=c['conflict_type']
+                    )
+
+            # 资源不足导致未排满的课程逐门持久化，不允许静默丢课
+            UnscheduledCourse.objects.filter(semester=semester).delete()
+            bulk_unscheduled = []
+            for u in unscheduled:
+                bulk_unscheduled.append(UnscheduledCourse(
+                    semester=semester,
+                    class_id_id=u['class_id'],
+                    course_id=u['course_id'],
+                    teacher_id=u['teacher_id'],
+                    weekly_hours=u['weekly_hours'],
+                    scheduled_hours=u['scheduled_hours'],
+                    unscheduled_hours=u['unscheduled_hours'],
+                    reason=u['reason'],
+                    detail=u['detail'],
+                    blocked_slots=u['blocked_slots'],
+                ))
+            UnscheduledCourse.objects.bulk_create(bulk_unscheduled)
 
         final_entries = ScheduleEntry.objects.filter(semester=semester)
-        serializer = ScheduleEntryDetailSerializer(final_entries, many=True)
+        entry_serializer = ScheduleEntryDetailSerializer(final_entries, many=True)
+
+        unscheduled_records = UnscheduledCourse.objects.filter(
+            semester=semester
+        ).select_related('class_id', 'course', 'teacher')
+        unscheduled_serializer = UnscheduledCourseSerializer(
+            unscheduled_records, many=True
+        )
+
+        requested_hours = sum(task.weekly_hours for task in tasks)
+        scheduled_count = final_entries.count()
+        locked_count = sum(1 for e in entry_serializer.data if e['is_locked'])
+        unscheduled_hours = sum(u['unscheduled_hours'] for u in unscheduled)
 
         return Response({
-            'schedule': serializer.data,
+            'schedule': entry_serializer.data,
             'conflicts': conflicts,
-            'scheduling_messages': scheduling_conflicts,
-            'total_entries': len(serializer.data)
+            'unscheduled_courses': unscheduled_serializer.data,
+            'scheduling_messages': unscheduled,
+            'stats': {
+                'requested_hours': requested_hours,
+                'scheduled_count': scheduled_count,
+                'locked_count': locked_count,
+                'newly_scheduled_count': scheduled_count - locked_count,
+                'unscheduled_course_count': len(unscheduled),
+                'unscheduled_hours': unscheduled_hours,
+            },
+            'total_entries': scheduled_count
         })
 
     @action(detail=False, methods=['post'])
@@ -360,6 +417,31 @@ class ConflictViewSet(viewsets.ModelViewSet):
     queryset = Conflict.objects.all().select_related('semester')
     serializer_class = ConflictSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = self.queryset
+        semester_id = self.request.query_params.get('semester_id')
+        if semester_id:
+            queryset = queryset.filter(semester_id=semester_id)
+        return queryset
+
+
+class UnscheduledCourseViewSet(viewsets.ReadOnlyModelViewSet):
+    """自动排课后未排满的课程清单，支持按学期/班级查询。"""
+    serializer_class = UnscheduledCourseSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = UnscheduledCourse.objects.all().select_related(
+            'semester', 'class_id', 'course', 'teacher'
+        )
+        semester_id = self.request.query_params.get('semester_id')
+        if semester_id:
+            queryset = queryset.filter(semester_id=semester_id)
+        class_id = self.request.query_params.get('class_id')
+        if class_id:
+            queryset = queryset.filter(class_id_id=class_id)
+        return queryset
 
 
 class SwapRequestViewSet(viewsets.ModelViewSet):

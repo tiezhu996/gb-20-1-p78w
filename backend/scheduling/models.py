@@ -45,11 +45,55 @@ class ScheduleEntry(models.Model):
                 f"周{self.day_of_week}第{self.period}节")
 
 
+class UnscheduledCourse(models.Model):
+    """自动排课后仍有剩余课时无法安排的课程，必须逐门记录具体原因。"""
+    REASON_CHOICES = [
+        ('teacher_unavailable', '教师可用时间不足'),
+        ('classroom_capacity', '教室容量不足'),
+        ('classroom_type', '无匹配教室类型'),
+        ('classroom_occupied', '教室时段全部被占用'),
+        ('teacher_occupied', '教师时段被占用'),
+        ('class_occupied', '班级时段被占用'),
+        ('no_free_slot', '学期内无可用时段'),
+        ('locked_conflict', '与锁定课次冲突'),
+    ]
+
+    semester = models.ForeignKey(
+        Semester, on_delete=models.CASCADE, related_name='unscheduled_courses'
+    )
+    class_id = models.ForeignKey(
+        Class, on_delete=models.CASCADE, related_name='unscheduled_records'
+    )
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE, related_name='unscheduled_records'
+    )
+    teacher = models.ForeignKey(
+        Teacher, on_delete=models.CASCADE, related_name='unscheduled_records'
+    )
+    weekly_hours = models.IntegerField(help_text='每周应排课时数')
+    scheduled_hours = models.IntegerField(default=0, help_text='其中已排（含锁定）课时数')
+    unscheduled_hours = models.IntegerField(default=0, help_text='未能安排的课时数')
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
+    detail = models.TextField(blank=True, default='', help_text='未排原因的人类可读说明')
+    blocked_slots = models.JSONField(
+        default=list, blank=True, help_text='逐个候选时段的阻塞原因'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['semester', 'class_id', 'course']
+
+    def __str__(self):
+        return (f"{self.class_id} - {self.course} 未排{self.unscheduled_hours}节"
+                f"（{self.get_reason_display()}）")
+
+
 class Conflict(models.Model):
     CONFLICT_TYPES = [
         ('teacher', '教师冲突'),
         ('classroom', '教室冲突'),
         ('class', '班级冲突'),
+        ('locked', '锁定课次冲突'),
     ]
 
     semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
