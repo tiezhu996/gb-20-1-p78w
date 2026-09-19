@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute
+    ClassCourse, ScheduleEntry, Conflict, SwapRequest, Substitute,
+    UnscheduledCourse
 )
 
 
@@ -41,8 +42,29 @@ class ScheduleEntryDetailSerializer(serializers.ModelSerializer):
 
 
 class ConflictSerializer(serializers.ModelSerializer):
+    related_teacher_name = serializers.CharField(
+        source='related_teacher.name', read_only=True, allow_null=True
+    )
+    related_classroom_name = serializers.CharField(
+        source='related_classroom.name', read_only=True, allow_null=True
+    )
+    related_class_name = serializers.CharField(
+        source='related_class.name', read_only=True, allow_null=True
+    )
+
     class Meta:
         model = Conflict
+        fields = '__all__'
+
+
+class UnscheduledCourseSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source='course.name', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.name', read_only=True)
+    class_name = serializers.CharField(source='class_id.name', read_only=True)
+    reason_display = serializers.CharField(source='get_reason_code_display', read_only=True)
+
+    class Meta:
+        model = UnscheduledCourse
         fields = '__all__'
 
 

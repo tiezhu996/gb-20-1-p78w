@@ -127,3 +127,167 @@ mat-sidenav {
 .fc-event:hover {
   opacity: 0.85;
 }
+
+/* ===== 自动排课统计与未排/冲突定位 ===== */
+.stats-bar {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-mini {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px !important;
+  border-left: 4px solid #4caf50;
+}
+
+.stat-mini mat-icon {
+  font-size: 32px;
+  width: 32px;
+  height: 32px;
+  color: #4caf50;
+}
+
+.stat-mini.unscheduled {
+  border-left-color: #9e9e9e;
+}
+
+.stat-mini.unscheduled mat-icon {
+  color: #9e9e9e;
+}
+
+.stat-mini.conflict {
+  border-left-color: #9e9e9e;
+}
+
+.stat-mini.conflict mat-icon {
+  color: #9e9e9e;
+}
+
+.stat-mini.has-warning {
+  border-left-color: #f44336 !important;
+  background-color: #fff5f5;
+}
+
+.stat-mini.has-warning mat-icon {
+  color: #f44336 !important;
+}
+
+.stat-mini-value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stat-mini-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.result-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.result-banner.warn {
+  background-color: #fff3e0;
+  color: #e65100;
+  border-color: #ffcc80;
+}
+
+.issue-panel {
+  margin-bottom: 16px;
+}
+
+.issue-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  margin: 0 0 10px;
+  color: #c62828;
+}
+
+.unscheduled-title {
+  color: #e65100;
+}
+
+.issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.issue-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.issue-chip:hover {
+  background: #eeeeee;
+  border-color: #90caf9;
+}
+
+.issue-chip-active {
+  background: #e3f2fd !important;
+  border-color: #1976d2 !important;
+}
+
+.conflict-chip .issue-chip-head {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.unscheduled-chip .issue-chip-head {
+  color: #e65100;
+  font-weight: 600;
+}
+
+.issue-chip-body {
+  font-size: 12px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.grid-cell {
+  transition: background-color 0.3s;
+}
+
+.grid-cell.cell-highlight {
+  background-color: #fff59d !important;
+  outline: 3px solid #fbc02d;
+  outline-offset: -3px;
+  animation: cell-pulse 1.2s ease-in-out 3;
+}
+
+@keyframes cell-pulse {
+  0%, 100% { outline-color: #fbc02d; }
+  50% { outline-color: #ef5350; }
+}
+
+.empty-slot-hint {
+  color: #ccc;
+  text-align: center;
+  font-size: 14px;
+  min-height: 20px;
+}
